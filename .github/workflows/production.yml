@@ -30,6 +30,10 @@ jobs:
           fi
           npm run generate
           test -f .output/public/index.html
+      - name: Remove Windows Zone.Identifier metadata from static output
+        run: |
+          find .output/public -type f -name '*:Zone.Identifier' -print -delete
+          test -f .output/public/index.html
       - uses: actions/upload-artifact@v4
         with:
           name: consulting-panel-output
