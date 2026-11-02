@@ -3,6 +3,12 @@ on:
   push:
     branches: [production]
   workflow_dispatch:
+    inputs:
+      deploy:
+        description: 'Deploy this build to production after checks'
+        type: boolean
+        default: false
+        required: true
 permissions:
   contents: read
 concurrency:
@@ -43,7 +49,7 @@ jobs:
           retention-days: 7
   deploy:
     needs: build
-    if: vars.ENABLE_PRODUCTION_DEPLOY == 'true'
+    if: (github.event_name == 'workflow_dispatch' && inputs.deploy == true) || (github.event_name == 'push' && vars.ENABLE_PRODUCTION_DEPLOY == 'true')
     runs-on: ubuntu-latest
     environment: production
     steps:
