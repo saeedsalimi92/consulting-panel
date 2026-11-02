@@ -1,0 +1,5 @@
+<script setup lang="ts">
+const {request}=useAdminApi();const rows=ref<any[]>([]);const error=ref('');async function load(){try{rows.value=(await request<any>('/admin/comments')).data;}catch(e:any){error.value=e?.data?.message||'خطا';}}onMounted(load);
+async function approve(r:any){try{await request(`/admin/comments/${r.id}`,{method:'PATCH',body:{is_approved:!r.is_approved}});await load();}catch(e:any){error.value=e?.data?.message||'خطا';}}
+async function remove(r:any){if(!confirm('حذف نظر؟'))return;try{await request(`/admin/comments/${r.id}`,{method:'DELETE'});await load();}catch(e:any){error.value=e?.data?.message||'خطا';}}
+</script><template><div dir="rtl"><h2 class="mb-5">نظرات</h2><v-alert v-if="error" type="error">{{error}}</v-alert><v-table><thead><tr><th>متن</th><th>وضعیت</th><th>عملیات</th></tr></thead><tbody><tr v-for="r in rows" :key="r.id"><td>{{r.body}}</td><td>{{r.is_approved?'تأیید شده':'در انتظار'}}</td><td><v-btn size="small" @click="approve(r)">{{r.is_approved?'رد':'تأیید'}}</v-btn><v-btn size="small" color="error" @click="remove(r)">حذف</v-btn></td></tr></tbody></v-table></div></template>
