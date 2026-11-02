@@ -1,0 +1,27 @@
+[Unit]
+Description=Consulting Panel Nuxt 3
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=consulting-panel
+Group=consulting-panel
+WorkingDirectory=/var/www/consulting/panel/current
+Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
+Environment=PORT=3200
+EnvironmentFile=-/etc/consulting/panel.env
+ExecStart=/usr/bin/node /var/www/consulting/panel/current/server/index.mjs
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/www/consulting/panel
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
