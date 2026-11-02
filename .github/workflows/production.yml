@@ -91,11 +91,11 @@ jobs:
           PREV="$(readlink "$BASE/current" || true)"
           ln -sfn "$NEW" "$BASE/current.next"
           mv -Tf "$BASE/current.next" "$BASE/current"
-          if ! cd /var/www/consulting && docker compose --env-file /etc/consulting/web.env -f compose.web.yaml up -d --no-deps panel; then
+          if ! cd /var/www/consulting && docker compose --env-file /etc/consulting/web.env -f compose.web.yaml up -d --no-deps --force-recreate panel; then
             if [ -n "$PREV" ]; then
               ln -sfn "$PREV" "$BASE/current.next"
               mv -Tf "$BASE/current.next" "$BASE/current"
-              cd /var/www/consulting && docker compose --env-file /etc/consulting/web.env -f compose.web.yaml up -d --no-deps panel || true
+              cd /var/www/consulting && docker compose --env-file /etc/consulting/web.env -f compose.web.yaml up -d --no-deps --force-recreate panel || true
             fi
             exit 1
           fi
@@ -108,7 +108,7 @@ jobs:
             if [ -n "$PREV" ]; then
               ln -sfn "$PREV" "$BASE/current.next"
               mv -Tf "$BASE/current.next" "$BASE/current"
-              cd /var/www/consulting && docker compose --env-file /etc/consulting/web.env -f compose.web.yaml up -d --no-deps panel || true
+              cd /var/www/consulting && docker compose --env-file /etc/consulting/web.env -f compose.web.yaml up -d --no-deps --force-recreate panel || true
             fi
             echo "Panel healthcheck failed"
             exit 1
