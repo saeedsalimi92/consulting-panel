@@ -1,0 +1,117 @@
+name: Consulting panel production
+on:
+  push:
+    branches: [production]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: consulting-panel-production
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Unit tests
+        run: npm run test:unit
+      - name: Build Nuxt panel
+        env:
+          NUXT_PUBLIC_API_BASE: ${{ vars.NUXT_PUBLIC_API_BASE }}
+        run: |
+          if [ -z "$NUXT_PUBLIC_API_BASE" ]; then
+            echo "::error::Set repository variable NUXT_PUBLIC_API_BASE"
+            exit 1
+          fi
+          npm run build
+          test -f .output/server/index.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: consulting-panel-output
+          path: .output/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+  deploy:
+    needs: build
+    if: vars.ENABLE_PRODUCTION_DEPLOY == 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: consulting-panel-output
+          path: .output
+      - name: Validate deployment secrets
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          for key in DEPLOY_HOST DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_KNOWN_HOSTS; do
+            if [ -z "${!key}" ]; then
+              echo "::error::Missing secret $key"
+              exit 1
+            fi
+          done
+      - name: Prepare SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Upload and activate panel
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          RELEASE="$GITHUB_SHA"
+          tar -C .output -czf /tmp/consulting-panel-output.tar.gz .
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p /var/www/consulting/panel/releases/$RELEASE"
+          scp -o BatchMode=yes -o StrictHostKeyChecking=yes /tmp/consulting-panel-output.tar.gz "$DEPLOY_USER@$DEPLOY_HOST:/var/www/consulting/panel/releases/$RELEASE/output.tar.gz"
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes "$DEPLOY_USER@$DEPLOY_HOST" "bash -s -- '$RELEASE'" <<'REMOTE'
+          set -euo pipefail
+          BASE=/var/www/consulting/panel
+          NEW="$BASE/releases/$1"
+          test -f "$NEW/output.tar.gz"
+          tar -xzf "$NEW/output.tar.gz" -C "$NEW"
+          rm "$NEW/output.tar.gz"
+          test -f "$NEW/server/index.mjs"
+          PREV="$(readlink "$BASE/current" || true)"
+          ln -sfn "$NEW" "$BASE/current.next"
+          mv -Tf "$BASE/current.next" "$BASE/current"
+          if ! sudo -n systemctl restart consulting-panel; then
+            if [ -n "$PREV" ]; then
+              ln -sfn "$PREV" "$BASE/current.next"
+              mv -Tf "$BASE/current.next" "$BASE/current"
+              sudo -n systemctl restart consulting-panel || true
+            fi
+            exit 1
+          fi
+          OK=0
+          for i in $(seq 1 20); do
+            if curl -fsS --max-time 3 -o /dev/null http://127.0.0.1:3200/; then OK=1; break; fi
+            sleep 2
+          done
+          if [ "$OK" -ne 1 ]; then
+            if [ -n "$PREV" ]; then
+              ln -sfn "$PREV" "$BASE/current.next"
+              mv -Tf "$BASE/current.next" "$BASE/current"
+              sudo -n systemctl restart consulting-panel || true
+            fi
+            echo "Panel healthcheck failed"
+            exit 1
+          fi
+          echo "Deployed $1"
+          REMOTE
