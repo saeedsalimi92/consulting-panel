@@ -28,7 +28,7 @@ jobs:
             echo "::error::Set repository variable NUXT_PUBLIC_API_BASE"
             exit 1
           fi
-          npm run generate
+          npm run build
           test -f .output/public/index.html
       - uses: actions/upload-artifact@v4
         with:
